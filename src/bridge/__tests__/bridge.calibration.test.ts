@@ -24,7 +24,10 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   tool: vi.fn((_name, _desc, _schema, handler) => handler),
 }));
 
-import { handleLine } from "../bridge.js";
+import { handleLine as rawHandleLine } from "../bridge.js";
+import { withPolzaTestKey } from "./polza-test-key.js";
+
+const handleLine = withPolzaTestKey(rawHandleLine);
 import {
   experimental_createBridgeDeltaEventCollector as createBridgeDeltaEventCollector,
   experimental_createBridgeJsonRpcTestHarness as createBridgeJsonRpcTestHarness,

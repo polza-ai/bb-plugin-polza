@@ -41,7 +41,10 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   tool: vi.fn((_name, _desc, _schema, handler) => handler),
 }));
 
-import { handleLine } from "../bridge.js";
+import { handleLine as rawHandleLine } from "../bridge.js";
+import { withPolzaTestKey } from "./polza-test-key.js";
+
+const handleLine = withPolzaTestKey(rawHandleLine);
 import { buildSessionOptions } from "../session-options.js";
 import {
   type ClaudePermissionMode,
@@ -1187,6 +1190,33 @@ describe("bridge", () => {
         options: expect.objectContaining({ cwd: "/tmp/commands-project" }),
       });
       expect(close).toHaveBeenCalledOnce();
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("refuses a session without a Polza key with an authRequired hint", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(rawHandleLine);
+    try {
+      bridge.sendRequest(1, "thread/start", {
+        threadId: "thread-no-key",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: {
+          permissionMode: "full",
+          permissionScope: "full",
+          approvalReviewer: null,
+          permissionEscalation: null,
+          providerOptions: { polzaModels: ["openai/gpt-5.4"] },
+        },
+      });
+      const response = await bridge.waitForResponse(1);
+      expect(response.error?.code).toBe(BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR);
+      expect(response.error?.message).toContain("Sign in with Polza");
+      expect(response.error?.data).toMatchObject({
+        recovery: { kind: "authRequired", retryable: true },
+      });
+      expect(queryMock).not.toHaveBeenCalled();
     } finally {
       bridge.restore();
     }

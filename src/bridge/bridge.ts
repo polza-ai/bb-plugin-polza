@@ -71,7 +71,7 @@ import {
   readPolzaListEnv,
 } from "./model-list.js";
 import { PolzaCostTracker } from "../polza/cost.js";
-import { POLZA_COST_STATE_KIND } from "../polza/contract.js";
+import { POLZA_COST_STATE_KIND, polzaProviderOptionsSchema } from "../polza/contract.js";
 import { extractClaudeResultTokenUsage } from "../sdk-extraction.js";
 import {
   PROVIDER_COMMANDS_STATE_KIND,
@@ -1602,6 +1602,25 @@ function publishProviderCommands(
   ]);
 }
 
+// polza: a session without a key would only reach Claude's "Not logged in";
+// refuse it with a typed hint so bb shows the provider's sign-in copy instead.
+const POLZA_SIGN_IN_MESSAGE =
+  "Sign in with Polza first: bb → Settings → Plugins → Polza.";
+
+function rejectWithoutPolzaKey(
+  id: string | number,
+  providerOptions: Record<string, unknown> | undefined,
+): boolean {
+  const parsed = polzaProviderOptionsSchema.safeParse(providerOptions ?? {});
+  if (parsed.success && parsed.data.polzaApiKey !== undefined) {
+    return false;
+  }
+  sendError(id, BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR, POLZA_SIGN_IN_MESSAGE, {
+    recovery: { kind: "authRequired", message: POLZA_SIGN_IN_MESSAGE, retryable: true },
+  });
+  return true;
+}
+
 // polza: tokens of a finished turn × catalog prices → `polza/cost` state.
 function publishPolzaCost(
   threadSession: ThreadSession,
@@ -2386,6 +2405,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       );
       break;
     case "thread/start":
+      if (rejectWithoutPolzaKey(request.id, request.params.options.providerOptions)) break;
       await handleThreadStart(
         request.id,
         claudeThreadStartParamsSchema.parse(
@@ -2394,6 +2414,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       );
       break;
     case "thread/resume":
+      if (rejectWithoutPolzaKey(request.id, request.params.options.providerOptions)) break;
       await handleThreadResume(
         request.id,
         claudeThreadResumeParamsSchema.parse({
@@ -2403,6 +2424,7 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
       );
       break;
     case "thread/fork":
+      if (rejectWithoutPolzaKey(request.id, request.params.options.providerOptions)) break;
       await handleThreadFork(
         request.id,
         claudeThreadForkParamsSchema.parse({

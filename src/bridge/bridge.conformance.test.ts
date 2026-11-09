@@ -29,7 +29,10 @@ vi.mock("./session-fork.js", async (importOriginal) => ({
   forkClaudeSession: forkClaudeSessionMock,
 }));
 
-import { handleLine } from "./bridge.js";
+import { handleLine as rawHandleLine } from "./bridge.js";
+import { withPolzaTestKey } from "./__tests__/polza-test-key.js";
+
+const handleLine = withPolzaTestKey(rawHandleLine);
 
 const ZERO_WORK_PROMPT_TEXT = "/clear";
 
