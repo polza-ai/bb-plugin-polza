@@ -1,9 +1,12 @@
 {
   "name": "bb-plugin-polza",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Polza.ai provider for bb: sign in with Polza, pick catalog models, see your balance.",
   "license": "MIT",
-  "repository": { "type": "git", "url": "https://github.com/polza-ai/bb-plugin-polza.git" },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/polza-ai/bb-plugin-polza.git"
+  },
   "homepage": "https://github.com/polza-ai/bb-plugin-polza",
   "type": "module",
   "engines": {
@@ -14,7 +17,10 @@
     "name": "Polza [Experimental]",
     "description": "Run bb threads on polza.ai models with Claude Code: OAuth sign-in, a curated model list, balance and ruble spend.",
     "branding": {
-      "icon": "./icons/polza.svg"
+      "icon": "./icons/polza.svg",
+      "experimental_icons": {
+        "mark": "./icons/polza.svg"
+      }
     },
     "server": "./server.ts",
     "app": "./app.tsx",
