@@ -24,6 +24,10 @@ The model picker on the Polza provider: the whitelisted models and reasoning lev
 
 ![bb model picker with Polza models](screenshots/model-picker.png)
 
+A thread on a Polza model: the context row above the composer shows the estimated spend and the prompt-cache hit rate, with token counts on expand.
+
+![Polza thread with the spend segment expanded](screenshots/thread-spend.png)
+
 ## How it works
 
 - The server part keeps the Polza API key as a plugin secret, runs the OAuth PKCE flow (`/api/auth/authorize` → loopback callback → `/api/auth/token`), reads `/v2/balance`, `/v1/key` and `/auth/userinfo`, and registers the `polza` provider.
