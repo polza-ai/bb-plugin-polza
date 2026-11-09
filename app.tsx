@@ -602,7 +602,7 @@ function CostSegmentSummary({ threadId, isExpanded, onToggle }: ExperimentalThre
         isExpanded && "bg-muted text-foreground",
       )}
     >
-      <Icon name="Wallet" className="size-3.5 shrink-0" aria-hidden="true" />
+      <Icon name="Receipt" className="size-3.5 shrink-0" aria-hidden="true" />
       <span className="truncate tabular-nums">
         ≈ {formatRub(cost.rub)}
         {hit === null ? null : <span className="opacity-70"> · cache {hit}%</span>}
@@ -653,7 +653,7 @@ export default definePluginApp((app) => {
     kind: "disclosure",
     id: "balance",
     label: "Polza balance",
-    icon: "Wallet",
+    icon: "Receipt",
     component: BalanceDisclosure,
   });
   app.slots.experimental_threadContextSegment({
