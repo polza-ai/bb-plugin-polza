@@ -7,10 +7,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import {
   definePluginApp,
-  experimental_CollapsibleStackCard as CollapsibleStackCard,
   experimental_useThreadExtensionState as useThreadExtensionState,
+  type ExperimentalThreadContextSegmentProps,
   useBbNavigate,
-  useComposer,
   useRealtime,
   useRpc,
 } from "@get-bb/plugin-sdk/app";
@@ -565,44 +564,81 @@ function BalanceDisclosure({ dismiss }: { dismiss(): void }) {
 }
 
 // ---------------------------------------------------------------------------
-// Composer card: estimated spend of the open thread
+// Context row above the composer: estimated spend of the open thread
 // ---------------------------------------------------------------------------
 
-function CostBanner() {
-  const { scope } = useComposer();
-  return scope.kind === "thread" ? <CostCard threadId={scope.threadId} /> : null;
+function useCost(threadId: string) {
+  const parsed = polzaCostStateSchema.safeParse(useThreadExtensionState(threadId, POLZA_COST_STATE_NAME));
+  return parsed.success ? parsed.data : null;
 }
 
-function CostCard({ threadId }: { threadId: string }) {
-  const parsed = polzaCostStateSchema.safeParse(useThreadExtensionState(threadId, POLZA_COST_STATE_NAME));
-  if (!parsed.success) return null;
-  const cost = parsed.data;
-  const tokens = cost.tokens;
+/** Share of prompt tokens served from the prompt cache, 0–100, or null before any input. */
+function cacheHitPercent(tokens: { input: number; cacheRead: number; cacheWrite: number }): number | null {
+  const prompt = tokens.input + tokens.cacheRead + tokens.cacheWrite;
+  return prompt === 0 ? null : Math.round((tokens.cacheRead / prompt) * 100);
+}
+
+function fmtInt(value: number): string {
+  return value.toLocaleString("ru-RU");
+}
+
+function useCostSegmentVisible({ threadId }: { threadId: string }): boolean {
+  return useCost(threadId) !== null;
+}
+
+function CostSegmentSummary({ threadId, isExpanded, onToggle }: ExperimentalThreadContextSegmentProps) {
+  const cost = useCost(threadId);
+  if (cost === null) return null;
+  const hit = cacheHitPercent(cost.tokens);
   return (
-    <CollapsibleStackCard
-      label="Polza spend"
-      title={`Polza: ≈ ${formatRub(cost.rub)}${cost.unpriced ? " (partly unpriced)" : ""}`}
-      icon="Wallet"
-      isActive={false}
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={isExpanded}
+      aria-label={`Polza spend ≈ ${formatRub(cost.rub)}${hit === null ? "" : `, cache hit ${hit}%`}`}
+      className={cn(
+        "flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground",
+        "hover:bg-muted hover:text-foreground",
+        isExpanded && "bg-muted text-foreground",
+      )}
     >
-      <div className={cn("grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground")}>
-        <span>Last turn</span>
-        <span className="text-right tabular-nums">{formatRub(cost.lastTurnRub)}</span>
-        <span>Input tokens</span>
-        <span className="text-right tabular-nums">{tokens.input.toLocaleString("ru-RU")}</span>
-        <span>Cache read / write</span>
-        <span className="text-right tabular-nums">
-          {tokens.cacheRead.toLocaleString("ru-RU")} / {tokens.cacheWrite.toLocaleString("ru-RU")}
-        </span>
-        <span>Output tokens</span>
-        <span className="text-right tabular-nums">{tokens.output.toLocaleString("ru-RU")}</span>
-        <span>Model</span>
-        <span className="truncate text-right">{cost.model ?? "—"}</span>
-      </div>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Estimate from token counts and catalog prices for this bridge session; the Polza dashboard has the billed amount.
+      <Icon name="Wallet" className="size-3.5 shrink-0" aria-hidden="true" />
+      <span className="truncate tabular-nums">
+        ≈ {formatRub(cost.rub)}
+        {hit === null ? null : <span className="opacity-70"> · cache {hit}%</span>}
+        {cost.unpriced ? <span className="opacity-70"> · partly unpriced</span> : null}
+      </span>
+    </button>
+  );
+}
+
+function CostSegmentDetails({ threadId, isExpanded }: ExperimentalThreadContextSegmentProps) {
+  const cost = useCost(threadId);
+  if (cost === null || !isExpanded) return null;
+  const hit = cacheHitPercent(cost.tokens);
+  const rows: [string, string][] = [
+    ["Spend, this session", `≈ ${formatRub(cost.rub)}`],
+    ["Last turn", formatRub(cost.lastTurnRub)],
+    ["Cache hit", hit === null ? "—" : `${hit}%`],
+    ["Input tokens", fmtInt(cost.tokens.input)],
+    ["Cache read / write", `${fmtInt(cost.tokens.cacheRead)} / ${fmtInt(cost.tokens.cacheWrite)}`],
+    ["Output tokens", fmtInt(cost.tokens.output)],
+    ["Model", cost.model ?? "—"],
+  ];
+  return (
+    <div className="px-3 pb-2 pt-1 text-xs">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1 sm:grid-cols-[auto_1fr_auto_1fr]">
+        {rows.map(([label, value]) => (
+          <div key={label} className="contents">
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd className="truncate text-right tabular-nums sm:text-left">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="mt-2 text-muted-foreground">
+        Estimated from token counts and catalog prices{cost.unpriced ? "; a model without a catalog price was not counted" : ""}. The Polza dashboard shows the billed amount.
       </p>
-    </CollapsibleStackCard>
+    </div>
   );
 }
 
@@ -620,10 +656,13 @@ export default definePluginApp((app) => {
     icon: "Wallet",
     component: BalanceDisclosure,
   });
-  app.composer.customize({
+  app.slots.experimental_threadContextSegment({
     id: "cost",
-    scopes: ["thread"],
-    banners: [{ id: "cost", chrome: "bare", component: CostBanner }],
+    title: "Polza spend",
+    group: "2_polza",
+    summary: CostSegmentSummary,
+    details: CostSegmentDetails,
+    useVisible: useCostSegmentVisible,
   });
   app.slots.experimental_providerIcon({
     providerKind: "agent",

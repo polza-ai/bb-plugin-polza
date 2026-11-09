@@ -70,7 +70,7 @@ describe("the Polza frontend", () => {
     const captured = await loadSlots();
     expect(captured.settingsSections.map((entry) => entry.id)).toEqual(["polza"]);
     expect(captured.experimentalSidebarFooterItems.map((entry) => entry.id)).toEqual(["balance"]);
-    expect(captured.composerCustomizations.map((entry) => entry.id)).toEqual(["cost"]);
+    expect(captured.threadContextSegments.map((entry) => entry.id)).toEqual(["cost"]);
   });
 
   it("renders the signed-in account, balance, key limit and the model whitelist with prices", async () => {

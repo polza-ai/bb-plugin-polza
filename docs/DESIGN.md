@@ -43,7 +43,7 @@ localhost сервера bb плюс ручная вставка кода, бэ�
      поиском по каталогу и ценами.
    - `experimental_sidebarFooter.register({kind:"disclosure"})`: баланс `available` и остаток
      лимита ключа, кнопка «Пополнить» (dashboard polza.ai).
-   - Composer banner `chrome:"bare"` с `experimental_CollapsibleStackCard`: расход треда в ₽ из
+   - Сегмент строки контекста над композером (`experimental_threadContextSegment`): расход треда в ₽ и доля кэша из
      `experimental_useThreadExtensionState(threadId, "cost")`.
 
 ## Ограничения

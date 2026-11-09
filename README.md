@@ -28,7 +28,7 @@ The model picker on the Polza provider: the whitelisted models and reasoning lev
 
 - The server part keeps the Polza API key as a plugin secret, runs the OAuth PKCE flow (`/api/auth/authorize` → loopback callback → `/api/auth/token`), reads `/v2/balance`, `/v1/key` and `/auth/userinfo`, and registers the `polza` provider.
 - The host part is a fork of bb's bundled Claude Code provider bridge (MIT, see `LICENSE.bb-upstream`). It starts the Claude Code CLI with `ANTHROPIC_BASE_URL` pointing at Polza, answers `model/list` from the whitelist (one `GET /v1/models/{slug}` per model, cached on disk), and publishes a `polza/cost` state after every turn.
-- The frontend adds the settings page, a sidebar footer disclosure with the balance and a collapsible spend card above the composer.
+- The frontend adds the settings page, a sidebar footer disclosure with the balance and a spend segment with the cache hit rate in the context row above the composer.
 
 Design notes and decisions: [`docs/DESIGN.md`](docs/DESIGN.md).
 
