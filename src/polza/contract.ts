@@ -178,37 +178,43 @@ function toPricing(
   };
 }
 
+/** Parses one catalog entry (`GET /v1/models/{slug}` or an item of the list); null when malformed or not a chat model. */
+export function parsePolzaCatalogEntry(raw: unknown): PolzaCatalogModel | null {
+  const parsed = catalogEntrySchema.safeParse(raw);
+  if (!parsed.success || parsed.data.type !== "chat") return null;
+  const model = parsed.data;
+  const efforts = model.reasoning?.supported_efforts?.filter(
+    (effort) => effort.trim().length > 0,
+  );
+  const supportedParameters = model.top_provider?.supported_parameters ?? [];
+  return {
+    id: model.id,
+    name: model.name || model.id,
+    shortDescription: model.short_description?.trim() || null,
+    vendor: model.id.split("/")[0] ?? "",
+    contextLength: model.context_length ?? model.top_provider?.context_length ?? null,
+    maxCompletionTokens:
+      model.max_completion_tokens ?? model.top_provider?.max_completion_tokens ?? null,
+    supportsReasoning:
+      (efforts !== undefined && efforts !== null && efforts.length > 0) ||
+      supportedParameters.includes("reasoning") ||
+      supportedParameters.includes("reasoning_effort"),
+    reasoningEfforts: efforts && efforts.length > 0 ? efforts : null,
+    pricing: toPricing(model.top_provider?.pricing),
+    inputModalities: model.architecture?.input_modalities ?? ["text"],
+    supportsTools: supportedParameters.includes("tools"),
+    fz152Compliant: model.is_fz152_compliant,
+  };
+}
+
 /** Parses one `GET /v1/models` response; malformed entries are dropped. */
 export function parsePolzaCatalog(raw: unknown): PolzaCatalogModel[] {
   const envelope = polzaCatalogResponseSchema.safeParse(raw);
   if (!envelope.success) return [];
   const models: PolzaCatalogModel[] = [];
   for (const entry of envelope.data.data) {
-    const parsed = catalogEntrySchema.safeParse(entry);
-    if (!parsed.success || parsed.data.type !== "chat") continue;
-    const model = parsed.data;
-    const efforts = model.reasoning?.supported_efforts?.filter(
-      (effort) => effort.trim().length > 0,
-    );
-    const supportedParameters = model.top_provider?.supported_parameters ?? [];
-    models.push({
-      id: model.id,
-      name: model.name || model.id,
-      shortDescription: model.short_description?.trim() || null,
-      vendor: model.id.split("/")[0] ?? "",
-      contextLength: model.context_length ?? model.top_provider?.context_length ?? null,
-      maxCompletionTokens:
-        model.max_completion_tokens ?? model.top_provider?.max_completion_tokens ?? null,
-      supportsReasoning:
-        (efforts !== undefined && efforts !== null && efforts.length > 0) ||
-        supportedParameters.includes("reasoning") ||
-        supportedParameters.includes("reasoning_effort"),
-      reasoningEfforts: efforts && efforts.length > 0 ? efforts : null,
-      pricing: toPricing(model.top_provider?.pricing),
-      inputModalities: model.architecture?.input_modalities ?? ["text"],
-      supportsTools: supportedParameters.includes("tools"),
-      fz152Compliant: model.is_fz152_compliant,
-    });
+    const model = parsePolzaCatalogEntry(entry);
+    if (model !== null) models.push(model);
   }
   return models;
 }

@@ -16,7 +16,8 @@ import {
 } from "./contract.js";
 
 const CATALOG_PATH = "/v1/models?type=chat";
-const CATALOG_TIMEOUT_MS = 15_000;
+// Polza serves the whole catalog slowly (20–30 s observed); only the settings page uses it.
+const CATALOG_TIMEOUT_MS = 90_000;
 
 export interface FetchPolzaCatalogArgs {
   baseUrl?: string | undefined;

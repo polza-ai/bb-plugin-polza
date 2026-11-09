@@ -81,11 +81,16 @@ describe("listPolzaBridgeModels", () => {
   });
 
   it("refuses an empty whitelist with a typed error and lists the rest", async () => {
-    const fakeCatalog = { get: vi.fn().mockResolvedValue(catalog) };
-    await expect(listPolzaBridgeModels({}, fakeCatalog)).rejects.toBeInstanceOf(PolzaEmptyModelListError);
-    const result = await listPolzaBridgeModels({ POLZA_MODELS: '["qwen/qwen3-coder-next"]' }, fakeCatalog);
+    const source = {
+      resolve: vi.fn(async (_baseUrl: string, slugs: readonly string[]) => ({
+        found: catalog.filter((model) => slugs.includes(model.id)),
+        missing: slugs.filter((slug) => !catalog.some((model) => model.id === slug)),
+      })),
+    };
+    await expect(listPolzaBridgeModels({}, source)).rejects.toBeInstanceOf(PolzaEmptyModelListError);
+    const result = await listPolzaBridgeModels({ POLZA_MODELS: '["qwen/qwen3-coder-next"]' }, source);
     expect(result.models.map((entry) => entry.id)).toEqual(["qwen/qwen3-coder-next"]);
-    expect(fakeCatalog.get).toHaveBeenCalledWith("https://polza.ai/api");
-    await expect(listPolzaBridgeModels({ POLZA_MODELS: '["vendor/gone"]' }, fakeCatalog)).rejects.toThrow(/vendor\/gone/u);
+    expect(source.resolve).toHaveBeenCalledWith("https://polza.ai/api", ["qwen/qwen3-coder-next"]);
+    await expect(listPolzaBridgeModels({ POLZA_MODELS: '["vendor/gone"]' }, source)).rejects.toThrow(/vendor\/gone/u);
   });
 });

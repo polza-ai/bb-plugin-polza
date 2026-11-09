@@ -67,7 +67,7 @@ import { claudeConfigDirectory, forkClaudeSession } from "./session-fork.js";
 import {
   PolzaEmptyModelListError,
   listPolzaBridgeModels,
-  polzaCatalogMemo,
+  polzaModelStore,
   readPolzaListEnv,
 } from "./model-list.js";
 import { PolzaCostTracker } from "../polza/cost.js";
@@ -1620,9 +1620,8 @@ function publishPolzaCost(
     readConfigEnvOverrides(attachment.sessionConstructionConfig.config),
   );
   const model = attachment.liveSettings.model ?? null;
-  const pricing = polzaCatalogMemo.peek(listEnv.baseUrl)?.find(
-    (candidate) => candidate.id === model,
-  )?.pricing ?? null;
+  const pricing =
+    model === null ? null : (polzaModelStore.peek(listEnv.baseUrl, model)?.pricing ?? null);
   const state = attachment.costTracker.record({
     model,
     pricing,
@@ -2965,6 +2964,8 @@ export const experimental_providerBridge = experimental_defineProviderBridge({
   handleLine,
   start: (context) => {
     bridgeTempDir = context.tempDir;
+    // polza: model facts survive bridge restarts in the plugin's host data dir.
+    polzaModelStore.setDataDir(context.dataDir);
   },
   onSigterm: () => {
     shutdownGracefully(

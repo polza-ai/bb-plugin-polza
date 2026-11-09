@@ -3,13 +3,14 @@
 // contributed environment on the `model/list` request (`envVars`), since that
 // request carries no provider options.
 import { type AvailableModel } from "@get-bb/plugin-sdk/provider-bridge";
-import { createPolzaCatalogMemo, buildPolzaModelList } from "../polza/catalog.js";
+import { buildPolzaModelList } from "../polza/catalog.js";
 import {
   POLZA_DEFAULT_BASE_URL,
   POLZA_ENV,
   parsePolzaModelList,
   type PolzaCatalogModel,
 } from "../polza/contract.js";
+import { PolzaModelStore } from "../polza/model-store.js";
 
 export interface PolzaModelListEnv {
   baseUrl: string;
@@ -43,20 +44,28 @@ export interface PolzaBridgeModelListResult {
   selectedOnlyModels: AvailableModel[];
 }
 
-const CATALOG_TTL_MS = 5 * 60_000;
+const MODEL_FACTS_TTL_MS = 10 * 60_000;
 
-export const polzaCatalogMemo = createPolzaCatalogMemo({ ttlMs: CATALOG_TTL_MS });
+/** Shared by `model/list` and the cost estimate (which reads prices with `peek`). */
+export const polzaModelStore = new PolzaModelStore({ ttlMs: MODEL_FACTS_TTL_MS });
+
+export interface PolzaModelSource {
+  resolve(
+    baseUrl: string,
+    slugs: readonly string[],
+  ): Promise<{ found: PolzaCatalogModel[]; missing: string[] }>;
+}
 
 export async function listPolzaBridgeModels(
   envVars: Record<string, string> | undefined,
-  catalog: { get(baseUrl: string): Promise<PolzaCatalogModel[]> } = polzaCatalogMemo,
+  source: PolzaModelSource = polzaModelStore,
 ): Promise<PolzaBridgeModelListResult> {
   const env = readPolzaListEnv(envVars);
   if (env.selection.length === 0) {
     throw new PolzaEmptyModelListError();
   }
-  const models = await catalog.get(env.baseUrl);
-  const list = buildPolzaModelList({ catalog: models, selection: env.selection });
+  const lookup = await source.resolve(env.baseUrl, env.selection);
+  const list = buildPolzaModelList({ catalog: lookup.found, selection: env.selection });
   if (list.models.length === 0) {
     throw new Error(
       `None of the selected Polza models exist in the catalog: ${list.missing.join(", ")}.`,
