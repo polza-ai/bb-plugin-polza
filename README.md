@@ -14,6 +14,16 @@ Then open **Settings → Plugins → Polza**, press **Sign in with Polza**, cons
 
 If the browser cannot reach the bb server after consent (the server runs on another machine), copy the address the browser tried to open, or just its `code` value, and paste it into the settings page.
 
+## Screenshots
+
+Plugin settings: account, balance, the key's spend limit and the model whitelist with catalog prices.
+
+![Polza settings page in bb](screenshots/settings.png)
+
+The model picker on the Polza provider: the whitelisted models and reasoning levels.
+
+![bb model picker with Polza models](screenshots/model-picker.png)
+
 ## How it works
 
 - The server part keeps the Polza API key as a plugin secret, runs the OAuth PKCE flow (`/api/auth/authorize` → loopback callback → `/api/auth/token`), reads `/v2/balance`, `/v1/key` and `/auth/userinfo`, and registers the `polza` provider.
