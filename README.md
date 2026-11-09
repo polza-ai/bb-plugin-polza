@@ -5,8 +5,10 @@ A [bb](https://getbb.app) plugin that adds the **Polza** agent provider: run bb 
 ## Install
 
 ```sh
-bb plugin install git:https://github.com/<owner>/bb-polza.git@main
+bb plugin install https://github.com/polza-ai/bb-plugin-polza
 ```
+
+That tracks the latest release tag (`v0.x`); `bb plugin update polza` moves to newer ones.
 
 Then open **Settings → Plugins → Polza**, press **Sign in with Polza**, consent on polza.ai (pick the paying organisation and raise the key's spend limit above the suggested 100 ₽/day), and start a thread on the **Polza** provider. The picker starts with a handful of popular models; change the list on the same settings page.
 

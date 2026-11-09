@@ -5,6 +5,7 @@
 баланс и лимит ключа в футере сайдбара и настройках, оценка расхода в рублях по треду.
 Движок агента — Claude Code CLI через `@anthropic-ai/claude-agent-sdk`, направленный на
 Anthropic-совместимый `/v1/messages` Пользы. Пакет: `bb-plugin-polza`, id плагина `polza`.
+Репозиторий: https://github.com/polza-ai/bb-plugin-polza (релизы — теги `vX.Y.Z`, их читает `bb plugin install`).
 
 Дизайн и принятые решения: `docs/DESIGN.md`. Бридж в `src/` — форк встроенного провайдера
 `provider-claude-code` из репозитория bb (MIT, `LICENSE.bb-upstream`); наши правки помечены
