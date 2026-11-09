@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-polza",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "description": "Polza.ai provider for bb: sign in with Polza, pick catalog models, see your balance.",
   "license": "MIT",
   "repository": {

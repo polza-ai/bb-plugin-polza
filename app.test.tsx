@@ -24,6 +24,7 @@ const signedIn: PolzaStatus = {
   callbackUrl: "http://127.0.0.1:38886/api/v1/plugins/polza/http/oauth/callback",
   dashboardUrl: "https://polza.ai/dashboard",
   loginPending: false,
+  aiService: { enabled: true, model: "anthropic/claude-haiku-5.5" },
 };
 
 const catalog = {
@@ -86,6 +87,7 @@ describe("the Polza frontend", () => {
         "account.logout": () => ({ ...signedIn, account: { ...signedIn.account, signedIn: false } }),
         "catalog.list": () => catalog,
         "models.set": ({ models }) => ({ models }),
+        "aiService.set": ({ enabled, model }) => ({ enabled: enabled ?? true, model: model ?? "anthropic/claude-haiku-5.5" }),
       },
     });
     await waitFor(() => expect(rendered.getByText("ilya@example.com")).toBeTruthy());
@@ -113,6 +115,7 @@ describe("the Polza frontend", () => {
         "account.logout": () => signedIn,
         "catalog.list": () => catalog,
         "models.set": ({ models }) => ({ models }),
+        "aiService.set": ({ enabled, model }) => ({ enabled: enabled ?? true, model: model ?? "anthropic/claude-haiku-5.5" }),
       },
     });
     await waitFor(() => expect(rendered.getByRole("button", { name: /Sign in with Polza/u })).toBeTruthy());

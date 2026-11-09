@@ -24,6 +24,7 @@ import { createPolzaCatalogMemo } from "./src/polza/catalog.js";
 import { PolzaOAuthError, PolzaOAuthLogin, parsePastedCallback } from "./src/polza/oauth.js";
 import { POLZA_CHANGED_CHANNEL, polzaRpcContract, type PolzaStatus } from "./src/polza/rpc.js";
 import { CLAUDE_NATIVE_ROOTS_DECLARATION } from "./src/native-roots.js";
+import { registerPolzaAiService } from "./src/polza/ai-service.js";
 
 export { polzaRpcContract } from "./src/polza/rpc.js";
 
@@ -85,6 +86,20 @@ export default async function plugin(bb: BbPluginApi) {
       default: "",
       experimental_schema: optionalSlug,
     },
+    aiServiceEnabled: {
+      type: "boolean",
+      label: "Thread titles and commit messages",
+      description:
+        "Offer Polza as bb's AI service for thread titles and commit messages (Settings → AI services). Uses the model below.",
+      default: true,
+    },
+    aiServiceModel: {
+      type: "string",
+      label: "Model for titles and commit messages",
+      description: "A cheap catalog model; a title costs a fraction of a kopeck.",
+      default: POLZA_DEFAULT_HAIKU_MODEL,
+      experimental_schema: optionalSlug,
+    },
     memoryEnabled: {
       type: "boolean",
       label: "Claude Code memory",
@@ -118,7 +133,11 @@ export default async function plugin(bb: BbPluginApi) {
   let current = await settings.get();
   settings.onChange((next) => {
     const keyChanged = next.apiKey !== current.apiKey;
-    const modelsChanged = next.models !== current.models || next.baseUrl !== current.baseUrl;
+    const modelsChanged =
+      next.models !== current.models ||
+      next.baseUrl !== current.baseUrl ||
+      next.aiServiceEnabled !== current.aiServiceEnabled ||
+      next.aiServiceModel !== current.aiServiceModel;
     current = next;
     if (keyChanged) account.invalidate();
     if (keyChanged || modelsChanged) publishChanged();
@@ -132,6 +151,9 @@ export default async function plugin(bb: BbPluginApi) {
   const selectedModels = () => parsePolzaModelList(current.models);
   const callbackUrl = () =>
     `${bb.server.loopbackBaseUrl.replace(/\/+$/u, "")}/api/v1/plugins/${bb.pluginId}/http${OAUTH_CALLBACK_PATH}`;
+
+  const aiServiceModel = () => current.aiServiceModel?.trim() || POLZA_DEFAULT_HAIKU_MODEL;
+  const aiServiceEnabled = () => current.aiServiceEnabled !== false;
 
   const account = new PolzaAccountClient({ baseUrl, apiKey });
   const catalog = createPolzaCatalogMemo({ ttlMs: CATALOG_TTL_MS });
@@ -160,6 +182,7 @@ export default async function plugin(bb: BbPluginApi) {
       callbackUrl: callbackUrl(),
       dashboardUrl: POLZA_DASHBOARD_URL,
       loginPending: login.pendingState() !== null,
+      aiService: { enabled: aiServiceEnabled(), model: aiServiceModel() },
     };
   }
 
@@ -246,12 +269,27 @@ export default async function plugin(bb: BbPluginApi) {
       const models = await catalog.get(baseUrl() + (input?.refresh ? "" : ""));
       return { models, fetchedAt: new Date().toISOString() };
     },
+    "aiService.set": async ({ enabled, model }) => {
+      current = await settings.experimental_set({
+        ...(enabled !== undefined ? { aiServiceEnabled: enabled } : {}),
+        ...(model !== undefined ? { aiServiceModel: model } : {}),
+      });
+      publishChanged();
+      return { enabled: aiServiceEnabled(), model: aiServiceModel() };
+    },
     "models.set": async ({ models }) => {
       const unique = [...new Set(models)];
       current = await settings.experimental_set({ models: JSON.stringify(unique) });
       publishChanged();
       return { models: unique };
     },
+  });
+
+  registerPolzaAiService(bb, {
+    baseUrl,
+    apiKey,
+    model: aiServiceModel,
+    enabled: aiServiceEnabled,
   });
 
   // Non-secret routing facts for the bridge's sessionless requests

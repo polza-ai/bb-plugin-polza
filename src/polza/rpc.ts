@@ -2,7 +2,7 @@
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { polzaAccountSchema } from "./account.js";
-import { polzaModelListSchema } from "./contract.js";
+import { polzaModelListSchema, polzaModelSlugSchema } from "./contract.js";
 
 export const polzaCatalogModelSchema = z.object({
   id: z.string(),
@@ -33,6 +33,7 @@ export const polzaStatusSchema = z.object({
   callbackUrl: z.string(),
   dashboardUrl: z.string(),
   loginPending: z.boolean(),
+  aiService: z.object({ enabled: z.boolean(), model: z.string() }),
 });
 
 export type PolzaStatus = z.infer<typeof polzaStatusSchema>;
@@ -68,6 +69,13 @@ export const polzaRpcContract = defineRpcContract({
   "models.set": {
     input: z.object({ models: polzaModelListSchema }),
     output: z.object({ models: z.array(z.string()) }),
+  },
+  "aiService.set": {
+    input: z.object({
+      enabled: z.boolean().optional(),
+      model: polzaModelSlugSchema.optional(),
+    }),
+    output: z.object({ enabled: z.boolean(), model: z.string() }),
   },
 });
 

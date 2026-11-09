@@ -16,6 +16,8 @@ localhost сервера bb плюс ручная вставка кода, бэ�
      принимает вставленный `code` или полный URL (запасной путь для удалённого сервера).
      `callback_url` = `${bb.server.loopbackBaseUrl}/api/v1/plugins/polza/http/oauth/callback`.
    - RPC `account.get`: `/api/auth/userinfo`, `/v2/balance`, `/v1/key` (кэш 20 с); `account.logout`.
+   - AI-сервис `polza` (`bb.experimental_aiServices`): заголовки тредов и commit-сообщения через
+     `/v1/chat/completions` дешёвой моделью из настроек (`aiServiceModel`, по умолчанию Haiku); выключатель `aiServiceEnabled`.
    - RPC `catalog.list`: `/v1/models?type=chat` (кэш 5 мин) для редактора белого списка.
    - `bb.providers.register({id:"polza", …})`: `maintenance {health, installation}`, `usage:false`,
      `models:{scope:"host"}`, `extensionKinds: { cost: {state} }`,

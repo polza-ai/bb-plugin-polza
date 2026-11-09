@@ -123,7 +123,7 @@ function SignInBlock({
       </p>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <Button onClick={start} disabled={busy}>
-          <Icon name="LogIn" className="size-4" />
+          <Icon name="polza/mark" className="size-4" />
           {pending ? "Open the consent page again" : "Sign in with Polza"}
         </Button>
         {pending ? (
@@ -225,7 +225,7 @@ function AccountBlock({
             Top up
           </Button>
           <Button variant="ghost" size="sm" onClick={onRefresh} aria-label="Refresh balance">
-            <Icon name="RefreshCw" className="size-4" />
+            <Icon name="RotateCcw" className="size-4" />
           </Button>
           <Button variant="ghost" size="sm" onClick={logout} disabled={busy}>
             Sign out
@@ -280,26 +280,9 @@ function priceLabel(model: CatalogModel): string {
   return `${formatRub(model.pricing.promptPerMillion)} / ${formatRub(model.pricing.completionPerMillion)} per Mtok`;
 }
 
-function ModelsBlock({
-  status,
-  rpc,
-  onSaved,
-}: {
-  status: PolzaStatus;
-  rpc: Rpc;
-  onSaved: () => void;
-}) {
+function useCatalog(rpc: Rpc) {
   const [catalog, setCatalog] = useState<CatalogModel[] | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [vendor, setVendor] = useState<string>("all");
-  const [selection, setSelection] = useState<string[]>(status.models);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setSelection(status.models);
-  }, [status.models]);
   useEffect(() => {
     rpc.call("catalog.list", null).then(
       (result) => {
@@ -309,6 +292,31 @@ function ModelsBlock({
       (cause: unknown) => setCatalogError(describeError(cause)),
     );
   }, [rpc]);
+  return { catalog, catalogError };
+}
+
+function ModelsBlock({
+  status,
+  rpc,
+  catalog,
+  catalogError,
+  onSaved,
+}: {
+  status: PolzaStatus;
+  rpc: Rpc;
+  catalog: CatalogModel[] | null;
+  catalogError: string | null;
+  onSaved: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [vendor, setVendor] = useState<string>("all");
+  const [selection, setSelection] = useState<string[]>(status.models);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelection(status.models);
+  }, [status.models]);
 
   const byId = useMemo(() => new Map((catalog ?? []).map((model) => [model.id, model])), [catalog]);
   const vendors = useMemo(
@@ -481,8 +489,103 @@ function ModelsBlock({
   );
 }
 
+function AiServiceBlock({
+  status,
+  rpc,
+  catalog,
+  onSaved,
+}: {
+  status: PolzaStatus;
+  rpc: Rpc;
+  catalog: CatalogModel[] | null;
+  onSaved: () => void;
+}) {
+  const [model, setModel] = useState(status.aiService.model);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setModel(status.aiService.model);
+  }, [status.aiService.model]);
+  const cheap = useMemo(
+    () =>
+      (catalog ?? [])
+        .filter((entry) => entry.pricing !== null && entry.supportsTools)
+        .sort((a, b) => (a.pricing!.completionPerMillion) - (b.pricing!.completionPerMillion))
+        .slice(0, 40),
+    [catalog],
+  );
+  const save = async (patch: { enabled?: boolean; model?: string }) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await rpc.call("aiService.set", patch);
+      onSaved();
+    } catch (cause) {
+      setError(describeError(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const current = catalog?.find((entry) => entry.id === model) ?? null;
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-medium">Thread titles and commit messages</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            bb asks an AI service for a short thread title after the first prompt and for commit messages. Polza can be that service; pick it or leave Automatic in Settings → AI services. A title costs a fraction of a kopeck on a small model.
+          </p>
+        </div>
+        <label className="flex shrink-0 items-center gap-2 text-sm">
+          <Checkbox
+            checked={status.aiService.enabled}
+            disabled={busy}
+            onCheckedChange={(value) => void save({ enabled: value === true })}
+            aria-label="Offer Polza as an AI service"
+          />
+          Offer Polza
+        </label>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Input
+          list="polza-ai-service-models"
+          value={model}
+          onChange={(event) => setModel(event.target.value)}
+          placeholder="vendor/model"
+          aria-label="Model for titles and commit messages"
+          className="max-w-sm font-mono text-xs"
+        />
+        <datalist id="polza-ai-service-models">
+          {cheap.map((entry) => (
+            <option key={entry.id} value={entry.id}>
+              {`${entry.name} · ${priceLabel(entry)}`}
+            </option>
+          ))}
+        </datalist>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={busy || model.trim() === status.aiService.model || model.trim() === ""}
+          onClick={() => void save({ model: model.trim() })}
+        >
+          Save model
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          {current ? `${current.name} · ${priceLabel(current)}` : catalog ? "Not in the catalog" : ""}
+        </span>
+      </div>
+      {error ? (
+        <p role="alert" className="mt-2 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function PolzaSettings() {
   const { rpc, status, error, refetch, setStatus } = useStatus();
+  const { catalog, catalogError } = useCatalog(rpc);
   if (status === null) {
     return (
       <p className="text-sm text-muted-foreground">{error ?? "Loading Polza status…"}</p>
@@ -500,7 +603,8 @@ function PolzaSettings() {
       ) : (
         <SignInBlock status={status} rpc={rpc} onChanged={setStatus} />
       )}
-      <ModelsBlock status={status} rpc={rpc} onSaved={() => void refetch()} />
+      <ModelsBlock status={status} rpc={rpc} catalog={catalog} catalogError={catalogError} onSaved={() => void refetch()} />
+      <AiServiceBlock status={status} rpc={rpc} catalog={catalog} onSaved={() => void refetch()} />
       <p className="text-xs text-muted-foreground">
         Threads run Claude Code against {status.baseUrl}. Install or update the Claude CLI from Settings → Providers → Polza.
       </p>
@@ -512,53 +616,74 @@ function PolzaSettings() {
 // Sidebar footer: balance at a glance
 // ---------------------------------------------------------------------------
 
+function BalanceRow({ label, value, note }: { label: string; value: string; note?: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="text-right tabular-nums">
+        {value}
+        {note ? <span className="ml-1 text-muted-foreground">{note}</span> : null}
+      </span>
+    </div>
+  );
+}
+
 function BalanceDisclosure({ dismiss }: { dismiss(): void }) {
   const { status, error, refetch } = useStatus();
   const navigate = useBbNavigate();
   const account = status?.account;
+  const iconButton =
+    "flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground";
   return (
-    <div className="w-72 max-w-full space-y-3 p-3 text-sm">
-      <div className="flex items-center justify-between">
-        <span className="font-medium">Polza</span>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" className="size-7" aria-label="Refresh" onClick={() => void refetch(true)}>
-            <Icon name="RefreshCw" className="size-4" />
-          </Button>
-          <Button variant="ghost" size="icon" className="size-7" aria-label="Close" onClick={dismiss}>
-            <Icon name="X" className="size-4" />
-          </Button>
-        </div>
+    <div className="flex w-full min-w-0 flex-col text-xs">
+      <div className="flex items-center gap-1 px-2.5 pt-2">
+        <Icon name="polza/mark" className="size-3.5 shrink-0" aria-hidden="true" />
+        <span className="min-w-0 flex-1 truncate font-medium">Polza</span>
+        <button type="button" aria-label="Refresh Polza balance" className={iconButton} onClick={() => void refetch(true)}>
+          <Icon name="RotateCcw" className="size-3.5" aria-hidden="true" />
+        </button>
+        <button type="button" aria-label="Collapse Polza balance" className={iconButton} onClick={dismiss}>
+          <Icon name="ChevronDown" className="size-4" aria-hidden="true" />
+        </button>
       </div>
-      {status === null ? (
-        <p className="text-muted-foreground">{error ?? "Loading…"}</p>
-      ) : !account?.signedIn ? (
-        <p className="text-muted-foreground">Not signed in. Open Settings → Plugins → Polza.</p>
-      ) : (
-        <>
-          <div className="flex gap-2">
-            <Stat
+      <div className="space-y-1.5 px-2.5 pb-2.5 pt-2">
+        {status === null ? (
+          <p className="text-muted-foreground">{error ?? "Loading…"}</p>
+        ) : !account?.signedIn ? (
+          <p className="text-muted-foreground">Not signed in. Open Settings → Plugins → Polza.</p>
+        ) : (
+          <>
+            <BalanceRow
               label="Available"
               value={account.balance?.available == null ? "—" : formatRub(account.balance.available)}
             />
-            <Stat
+            {account.balance?.amount != null && account.balance.available !== account.balance.amount ? (
+              <BalanceRow label="Wallet" value={formatRub(account.balance.amount)} />
+            ) : null}
+            <BalanceRow
               label="Key limit"
               value={
                 account.keyLimit === null || account.keyLimit.limit === null
                   ? "none"
-                  : formatRub(account.keyLimit.remaining ?? 0)
+                  : `${formatRub(account.keyLimit.remaining ?? 0)} of ${formatRub(account.keyLimit.limit)}`
               }
               note={account.keyLimit?.limit != null ? resetLabel(account.keyLimit.reset) : undefined}
             />
-          </div>
-          {account.keyRevoked ? (
-            <p className="text-destructive">Key refused: sign in again.</p>
-          ) : null}
-          <Button variant="secondary" size="sm" className="w-full" onClick={() => navigate.openUrl(status.dashboardUrl)}>
-            <Icon name="ExternalLink" className="size-4" />
-            Polza dashboard
-          </Button>
-        </>
-      )}
+            {account.keyLimit?.usageDaily != null ? (
+              <BalanceRow label="Spent today" value={formatRub(account.keyLimit.usageDaily)} />
+            ) : null}
+            {account.keyRevoked ? <p className="text-destructive">Key refused: sign in again.</p> : null}
+            <button
+              type="button"
+              className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs hover:bg-sidebar-accent"
+              onClick={() => navigate.openUrl(status.dashboardUrl)}
+            >
+              <Icon name="ExternalLink" className="size-3.5" aria-hidden="true" />
+              Top up on polza.ai
+            </button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
