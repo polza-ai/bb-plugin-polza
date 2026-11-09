@@ -284,7 +284,7 @@ export default async function plugin(bb: BbPluginApi) {
       expiredHint: "Your Polza key was revoked. Sign in again in Settings → Plugins → Polza.",
       installUrl: "https://polza.ai/docs/integracii/claude-code",
       planModeCopy: "Claude Code will plan without normal full-access execution.",
-      iconTint: { light: "#4F7A28", dark: "#A3E635" },
+      iconTint: { light: "#5B8F12", dark: "#B2F72A" },
     },
     ...CLAUDE_NATIVE_ROOTS_DECLARATION,
     maintenance: { health: true, usage: false, installation: true },
