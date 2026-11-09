@@ -17,7 +17,9 @@
     "server": "./server.ts",
     "app": "./app.tsx",
     "host": "./src/host.ts",
-    "skills": ["skills"],
+    "skills": [
+      "skills"
+    ],
     "experimental_providers": [
       {
         "kind": "agent",
@@ -26,7 +28,12 @@
       }
     ]
   },
-  "keywords": ["bb-plugin", "polza", "llm", "provider"],
+  "keywords": [
+    "bb-plugin",
+    "polza",
+    "llm",
+    "provider"
+  ],
   "scripts": {
     "build": "bb plugin build",
     "test": "vitest run",
@@ -41,15 +48,6 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
-    "@types/node": "^22.0.0",
-    "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0",
-    "better-sqlite3": "^12.0.0",
-    "cron-parser": "^5.5.0",
-    "hono": "^4.11.9",
-    "typescript": "^5.7.0",
-    "vitest": "^4.0.0",
     "@pierre/diffs": "~1.2.12",
     "@radix-ui/react-alert-dialog": "^1.2.1",
     "@radix-ui/react-context-menu": "^2.4.1",
@@ -61,10 +59,22 @@
     "@radix-ui/react-popover": "^1.3.1",
     "@radix-ui/react-select": "^2.4.1",
     "@radix-ui/react-tooltip": "^1.4.1",
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "better-sqlite3": "^12.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cron-parser": "^5.5.0",
+    "hono": "^4.11.9",
+    "jsdom": "^31.0.0",
     "sonner": "^1.7.4",
     "tailwind-merge": "^3.7.0",
-    "vaul": "^1.1.2"
+    "typescript": "^5.7.0",
+    "vaul": "^1.1.2",
+    "vitest": "^4.0.0"
   }
 }
