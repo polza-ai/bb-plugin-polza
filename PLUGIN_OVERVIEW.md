@@ -7,6 +7,11 @@ Run bb threads on [polza.ai](https://polza.ai) models. Sign in with your Polza a
 - **Balance at a glance.** The sidebar footer shows the organisation's available balance and what the key may still spend; the settings page adds the key's usage and a Top up button.
 - **Ruble spend per thread.** The context row above the composer shows the open thread's estimated spend and prompt-cache hit rate, with token counts on expand.
 - **Thread titles and commit messages.** Polza registers as a bb AI service, so bb can name threads and write commit messages with a small Polza model of your choice when no other service is set up.
+- **Voice input.** Dictate into the composer and Polza transcribes it with GigaAM-v3, Sber's Russian speech model hosted in Russia, at about 0.25 ₽ a minute. Any other speech-to-text model of the catalog can be set instead.
+- **Billed spend, not a guess.** The spend of a thread switches from a token estimate to the amount Polza billed a few seconds after each turn.
+- **Tools for every agent.** Agents of any provider can generate an image into the workspace, transcribe a call or meeting by speaker, and look up the current Polza API docs.
+- **Low balance warning.** One notification when the balance or the key limit is about to run out.
+- **Retired models.** A model Polza stopped serving is flagged in your list with its successor, one click to switch.
 - **Claude Code as the engine.** Threads run the Claude Code CLI against Polza's Anthropic-compatible API, so you keep Claude Code's tools, permission modes, plan mode, skills and checkpoint forks. The plugin installs or updates the CLI on each machine from Settings → Providers.
 
 ## Requirements
@@ -20,6 +25,10 @@ Run bb threads on [polza.ai](https://polza.ai) models. Sign in with your Polza a
 - `Models in the picker`: the whitelist, edited with search and prices on the Polza settings page or with `bb polza models set …`.
 - `Side-task model`, `Subagent model`: cheap models for Claude Code's housekeeping and subagents.
 - `Thread titles and commit messages`, `Model for titles and commit messages`: whether Polza is offered as bb's AI service and which model answers.
+- `Correct dictated terms`: a chat model fixes code terms the speech model spelled by ear.
+- `Image model`, `Model for recordings with speakers`: models behind the agent tools.
+- `Low balance alert, ₽`: the balance under which bb notifies you; 0 turns it off.
+- `Voice input`, `Model for voice input`: whether Polza transcribes what you dictate and which speech-to-text model does it (default `ai-sage/gigaam-v3`).
 - `Claude Code memory`, `Claude Code sandbox`, `Approvals in Full Access`, `Command descriptions`: Claude Code behaviour, as in the bundled Claude Code provider.
 
 ## For agents

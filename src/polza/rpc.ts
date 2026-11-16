@@ -3,6 +3,7 @@ import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { polzaAccountSchema } from "./account.js";
 import { polzaModelListSchema, polzaModelSlugSchema } from "./contract.js";
+import { polzaRetiredModelSchema } from "./replacements.js";
 
 export const polzaCatalogModelSchema = z.object({
   id: z.string(),
@@ -34,6 +35,9 @@ export const polzaStatusSchema = z.object({
   dashboardUrl: z.string(),
   loginPending: z.boolean(),
   aiService: z.object({ enabled: z.boolean(), model: z.string() }),
+  voice: z.object({ enabled: z.boolean(), model: z.string(), cleanup: z.boolean() }),
+  /** Picker models Polza has retired, with what replaces them. */
+  retired: z.array(polzaRetiredModelSchema),
 });
 
 export type PolzaStatus = z.infer<typeof polzaStatusSchema>;
@@ -76,6 +80,18 @@ export const polzaRpcContract = defineRpcContract({
       model: polzaModelSlugSchema.optional(),
     }),
     output: z.object({ enabled: z.boolean(), model: z.string() }),
+  },
+  "voice.set": {
+    input: z.object({
+      enabled: z.boolean().optional(),
+      model: polzaModelSlugSchema.optional(),
+      cleanup: z.boolean().optional(),
+    }),
+    output: z.object({ enabled: z.boolean(), model: z.string(), cleanup: z.boolean() }),
+  },
+  "models.replaceRetired": {
+    input: z.null(),
+    output: z.object({ models: z.array(z.string()) }),
   },
 });
 

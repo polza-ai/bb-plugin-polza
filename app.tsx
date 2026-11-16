@@ -264,7 +264,13 @@ function AccountBlock({
           label="Spent by this key"
           value={account.keyLimit?.usageTotal == null ? "—" : formatRub(account.keyLimit.usageTotal)}
           note={
-            account.keyLimit?.usageDaily == null ? undefined : `today ${formatRub(account.keyLimit.usageDaily)}`
+            [
+              account.keyLimit?.usageDaily == null ? null : `today ${formatRub(account.keyLimit.usageDaily)}`,
+              account.keyLimit?.usageWeekly == null ? null : `week ${formatRub(account.keyLimit.usageWeekly)}`,
+              account.keyLimit?.usageMonthly == null ? null : `month ${formatRub(account.keyLimit.usageMonthly)}`,
+            ]
+              .filter((part) => part !== null)
+              .join(" · ") || undefined
           }
         />
       </div>
@@ -387,6 +393,7 @@ function ModelsBlock({
           {saveError}
         </p>
       ) : null}
+      <RetiredModels status={status} rpc={rpc} onSaved={onSaved} />
 
       {selection.length === 0 ? (
         <p className="mt-3 rounded-md border border-dashed border-border px-3 py-4 text-center text-sm text-muted-foreground">
@@ -488,6 +495,159 @@ function ModelsBlock({
     </div>
   );
 }
+
+/** Picker models Polza no longer serves, with a one-click swap to their successors. */
+function RetiredModels({ status, rpc, onSaved }: { status: PolzaStatus; rpc: Rpc; onSaved: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (status.retired.length === 0) return null;
+  const replaceable = status.retired.filter((model) => model.replacedBy !== null).length;
+  const replace = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await rpc.call("models.replaceRetired", null);
+      onSaved();
+    } catch (cause) {
+      setError(describeError(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div role="status" className="mt-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <p className="font-medium">
+          {status.retired.length === 1 ? "A model in your list was retired by Polza" : `${status.retired.length} models in your list were retired by Polza`}
+        </p>
+        {replaceable > 0 ? (
+          <Button size="sm" variant="secondary" disabled={busy} onClick={() => void replace()}>
+            {replaceable === 1 ? "Switch to the successor" : "Switch to the successors"}
+          </Button>
+        ) : null}
+      </div>
+      <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+        {status.retired.map((model) => (
+          <li key={model.id}>
+            <span className="font-mono">{model.id}</span>
+            {model.replacedBy !== null ? (
+              <>
+                {" → "}
+                <span className="font-mono text-foreground">{model.replacedBy}</span>
+              </>
+            ) : (
+              <>
+                {": no single successor, "}
+                <a className="underline" href={model.url ?? "https://polza.ai/models"} target="_blank" rel="noreferrer">
+                  pick another in the catalog
+                </a>
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
+      {error ? (
+        <p role="alert" className="mt-1 text-xs text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function VoiceBlock({ status, rpc, onSaved }: { status: PolzaStatus; rpc: Rpc; onSaved: () => void }) {
+  const [model, setModel] = useState(status.voice.model);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setModel(status.voice.model);
+  }, [status.voice.model]);
+  const save = async (patch: { enabled?: boolean; model?: string; cleanup?: boolean }) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await rpc.call("voice.set", patch);
+      onSaved();
+    } catch (cause) {
+      setError(describeError(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-medium">Voice input</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            bb sends what you dictate into the composer to an AI service for a transcript. Polza can be that service; pick it or leave Automatic in Settings → AI services. GigaAM-v3 is tuned for Russian speech and costs about 0.25 ₽ a minute; use a Whisper model for other languages.
+          </p>
+        </div>
+        <label className="flex shrink-0 items-center gap-2 text-sm">
+          <Checkbox
+            checked={status.voice.enabled}
+            disabled={busy}
+            onCheckedChange={(value) => void save({ enabled: value === true })}
+            aria-label="Offer Polza for voice input"
+          />
+          Offer Polza
+        </label>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Input
+          list="polza-voice-models"
+          value={model}
+          onChange={(event) => setModel(event.target.value)}
+          placeholder="vendor/model"
+          aria-label="Model for voice input"
+          className="max-w-sm font-mono text-xs"
+        />
+        <datalist id="polza-voice-models">
+          {VOICE_MODEL_SUGGESTIONS.map((id) => (
+            <option key={id} value={id} />
+          ))}
+        </datalist>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={busy || model.trim() === status.voice.model || model.trim() === ""}
+          onClick={() => void save({ model: model.trim() })}
+        >
+          Save model
+        </Button>
+      </div>
+      <label className="mt-3 flex items-start gap-2 text-sm">
+        <Checkbox
+          checked={status.voice.cleanup}
+          disabled={busy}
+          onCheckedChange={(value) => void save({ cleanup: value === true })}
+          aria-label="Correct dictated code terms"
+          className="mt-0.5"
+        />
+        <span>
+          Correct code terms
+          <span className="block text-xs text-muted-foreground">
+            The model for titles fixes terms spelled by ear, such as «сервер тэ эс» → server.ts. Adds about a second and is skipped when it would be late.
+          </span>
+        </span>
+      </label>
+      {error ? (
+        <p role="alert" className="mt-2 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+// Speech-to-text models of the Polza catalog that answer in one request.
+const VOICE_MODEL_SUGGESTIONS = [
+  "ai-sage/gigaam-v3",
+  "openai/whisper-large-v3-turbo",
+  "openai/whisper-large-v3",
+  "openai/gpt-4o-mini-transcribe",
+  "mistralai/voxtral-mini-transcribe",
+];
 
 function AiServiceBlock({
   status,
@@ -605,6 +765,7 @@ function PolzaSettings() {
       )}
       <ModelsBlock status={status} rpc={rpc} catalog={catalog} catalogError={catalogError} onSaved={() => void refetch()} />
       <AiServiceBlock status={status} rpc={rpc} catalog={catalog} onSaved={() => void refetch()} />
+      <VoiceBlock status={status} rpc={rpc} onSaved={() => void refetch()} />
       <p className="text-xs text-muted-foreground">
         Threads run Claude Code against {status.baseUrl}. Install or update the Claude CLI from Settings → Providers → Polza.
       </p>
@@ -711,6 +872,13 @@ function useCostSegmentVisible({ threadId }: { threadId: string }): boolean {
   return useCost(threadId) !== null;
 }
 
+/** The billed amount once Polza has finalized every request, else the token estimate. */
+function spendLabel(cost: { rub: number; billed?: { rub: number; requests: number; pending: number } | undefined }): string {
+  const billed = cost.billed;
+  if (billed && billed.requests > 0 && billed.pending === 0) return formatRub(billed.rub);
+  return `≈ ${formatRub(Math.max(cost.rub, billed?.rub ?? 0))}`;
+}
+
 function CostSegmentSummary({ threadId, isExpanded, onToggle }: ExperimentalThreadContextSegmentProps) {
   const cost = useCost(threadId);
   if (cost === null) return null;
@@ -720,7 +888,7 @@ function CostSegmentSummary({ threadId, isExpanded, onToggle }: ExperimentalThre
       type="button"
       onClick={onToggle}
       aria-expanded={isExpanded}
-      aria-label={`Polza spend ≈ ${formatRub(cost.rub)}${hit === null ? "" : `, cache hit ${hit}%`}`}
+      aria-label={`Polza spend ${spendLabel(cost)}${hit === null ? "" : `, cache hit ${hit}%`}`}
       className={cn(
         "flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground",
         "hover:bg-muted hover:text-foreground",
@@ -729,7 +897,7 @@ function CostSegmentSummary({ threadId, isExpanded, onToggle }: ExperimentalThre
     >
       <Icon name="polza/mark" className="size-3.5 shrink-0" aria-hidden="true" />
       <span className="truncate tabular-nums">
-        ≈ {formatRub(cost.rub)}
+        {spendLabel(cost)}
         {hit === null ? null : <span className="opacity-70"> · cache {hit}%</span>}
         {cost.unpriced ? <span className="opacity-70"> · partly unpriced</span> : null}
       </span>
@@ -742,7 +910,14 @@ function CostSegmentDetails({ threadId, isExpanded }: ExperimentalThreadContextS
   if (cost === null || !isExpanded) return null;
   const hit = cacheHitPercent(cost.tokens);
   const rows: [string, string][] = [
-    ["Spend, this session", `≈ ${formatRub(cost.rub)}`],
+    ["Spend, this session", spendLabel(cost)],
+    [
+      "Billed by Polza",
+      cost.billed
+        ? `${formatRub(cost.billed.rub)} · ${cost.billed.requests} requests${cost.billed.pending > 0 ? `, ${cost.billed.pending} pending` : ""}`
+        : "—",
+    ],
+    ["Token estimate", `≈ ${formatRub(cost.rub)}`],
     ["Last turn", formatRub(cost.lastTurnRub)],
     ["Cache hit", hit === null ? "—" : `${hit}%`],
     ["Input tokens", fmtInt(cost.tokens.input)],
@@ -761,7 +936,7 @@ function CostSegmentDetails({ threadId, isExpanded }: ExperimentalThreadContextS
         ))}
       </dl>
       <p className="mt-2 text-muted-foreground">
-        Estimated from token counts and catalog prices{cost.unpriced ? "; a model without a catalog price was not counted" : ""}. The Polza dashboard shows the billed amount.
+        The billed amount comes from Polza's request history a few seconds after each turn; until then the figure is an estimate from token counts and catalog prices{cost.unpriced ? " (a model without a catalog price is not counted)" : ""}. Background requests of Claude Code are billed too but are not listed here.
       </p>
     </div>
   );

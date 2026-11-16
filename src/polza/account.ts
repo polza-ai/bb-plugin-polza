@@ -69,6 +69,7 @@ export const polzaAccountSchema = z.object({
       /** daily | weekly | monthly | never */
       reset: z.string().nullable(),
       usageDaily: z.number().nullable(),
+      usageWeekly: z.number().nullable().optional(),
       usageMonthly: z.number().nullable(),
       usageTotal: z.number().nullable(),
     })
@@ -190,6 +191,7 @@ export class PolzaAccountClient {
               remaining: keyInfo.value.limit_remaining ?? null,
               reset: keyInfo.value.limit_reset ?? null,
               usageDaily: keyInfo.value.usage_daily ?? null,
+              usageWeekly: keyInfo.value.usage_weekly ?? null,
               usageMonthly: keyInfo.value.usage_monthly ?? null,
               usageTotal: keyInfo.value.usage ?? null,
             }

@@ -25,6 +25,8 @@ const signedIn: PolzaStatus = {
   dashboardUrl: "https://polza.ai/dashboard",
   loginPending: false,
   aiService: { enabled: true, model: "anthropic/claude-haiku-5.5" },
+  voice: { enabled: true, model: "ai-sage/gigaam-v3", cleanup: true },
+  retired: [],
 };
 
 const catalog = {
@@ -88,6 +90,8 @@ describe("the Polza frontend", () => {
         "catalog.list": () => catalog,
         "models.set": ({ models }) => ({ models }),
         "aiService.set": ({ enabled, model }) => ({ enabled: enabled ?? true, model: model ?? "anthropic/claude-haiku-5.5" }),
+        "voice.set": ({ enabled, model, cleanup }) => ({ enabled: enabled ?? true, model: model ?? "ai-sage/gigaam-v3", cleanup: cleanup ?? true }),
+        "models.replaceRetired": () => ({ models: [] }),
       },
     });
     await waitFor(() => expect(rendered.getByText("ilya@example.com")).toBeTruthy());
@@ -116,6 +120,8 @@ describe("the Polza frontend", () => {
         "catalog.list": () => catalog,
         "models.set": ({ models }) => ({ models }),
         "aiService.set": ({ enabled, model }) => ({ enabled: enabled ?? true, model: model ?? "anthropic/claude-haiku-5.5" }),
+        "voice.set": ({ enabled, model, cleanup }) => ({ enabled: enabled ?? true, model: model ?? "ai-sage/gigaam-v3", cleanup: cleanup ?? true }),
+        "models.replaceRetired": () => ({ models: [] }),
       },
     });
     await waitFor(() => expect(rendered.getByRole("button", { name: /Sign in with Polza/u })).toBeTruthy());

@@ -71,6 +71,7 @@ import {
   readPolzaListEnv,
 } from "./model-list.js";
 import { PolzaCostTracker } from "../polza/cost.js";
+import { PolzaBilledTracker } from "../polza/billing.js";
 import { POLZA_COST_STATE_KIND, polzaProviderOptionsSchema } from "../polza/contract.js";
 import { extractClaudeResultTokenUsage } from "../sdk-extraction.js";
 import {
@@ -295,6 +296,8 @@ interface ThreadAttachment {
   threadIdRef: ThreadIdRef;
   /** polza: estimated ruble spend of this bridge attachment. */
   costTracker: PolzaCostTracker;
+  /** polza: billed cost of this attachment's requests, looked up after each turn. */
+  billedTracker: PolzaBilledTracker;
 }
 
 interface CreateThreadAttachmentArgs {
@@ -1155,6 +1158,7 @@ function createThreadAttachment(
     sessionPermissionGrants: [],
     threadIdRef: args.threadIdRef,
     costTracker: new PolzaCostTracker(),
+    billedTracker: new PolzaBilledTracker(),
   };
   attachment.residentSession = createThreadSession(attachment);
   return attachment;
@@ -1641,19 +1645,41 @@ function publishPolzaCost(
   const model = attachment.liveSettings.model ?? null;
   const pricing =
     model === null ? null : (polzaModelStore.peek(listEnv.baseUrl, model)?.pricing ?? null);
-  const state = attachment.costTracker.record({
+  const estimate = attachment.costTracker.record({
     model,
     pricing,
     usage: tokenUsage.last,
   });
-  sendThreadDeltas(threadId, [
-    {
-      kind: "extension.state",
-      extensionKind: POLZA_COST_STATE_KIND,
-      payload: state,
-    },
-  ]);
+  const publish = (): void => {
+    if (threadSession.closing) return;
+    const billed = attachment.billedTracker.snapshot();
+    sendThreadDeltas(threadId, [
+      {
+        kind: "extension.state",
+        extensionKind: POLZA_COST_STATE_KIND,
+        payload: billed === null ? estimate : { ...estimate, billed },
+      },
+    ]);
+  };
+  publish();
+  // The estimate shows at once; the billed amount replaces it when Polza has
+  // finalized the turn's requests, which takes a few seconds after the reply.
+  const env = attachment.sessionOptions.env ?? {};
+  const key = env["ANTHROPIC_AUTH_TOKEN"];
+  if (!key || !attachment.billedTracker.hasOpen()) return;
+  const api = { baseUrl: () => env["ANTHROPIC_BASE_URL"] ?? listEnv.baseUrl, apiKey: () => key };
+  void (async () => {
+    for (const delayMs of POLZA_BILLED_LOOKUP_DELAYS_MS) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs).unref());
+      if (threadSession.closing) return;
+      await attachment.billedTracker.reconcile(api, AbortSignal.timeout(15_000)).catch(() => undefined);
+      publish();
+      if (!attachment.billedTracker.hasOpen()) return;
+    }
+  })();
 }
+
+const POLZA_BILLED_LOOKUP_DELAYS_MS = [1_500, 6_000, 20_000];
 
 function refreshProviderCommands(threadSession: ThreadSession): void {
   threadSession.commandListGeneration += 1;
@@ -1713,6 +1739,9 @@ function createOnSdkMessage(
     ) {
       threadSession.commandListGeneration += 1;
       publishProviderCommands(threadSession, message.commands);
+    }
+    if (message.type === "assistant") {
+      threadSession.attachment.billedTracker.note(message.message.id);
     }
     if (message.type === "result") {
       publishPolzaCost(threadSession, args.threadIdRef.current, message);

@@ -11,6 +11,7 @@ import {
   POLZA_DASHBOARD_URL,
   POLZA_DEFAULT_BASE_URL,
   POLZA_DEFAULT_HAIKU_MODEL,
+  POLZA_DEFAULT_VOICE_MODEL,
   POLZA_ENV,
   POLZA_PROVIDER_ID,
   POLZA_STARTER_MODELS,
@@ -25,6 +26,12 @@ import { PolzaOAuthError, PolzaOAuthLogin, parsePastedCallback } from "./src/pol
 import { POLZA_CHANGED_CHANNEL, polzaRpcContract, type PolzaStatus } from "./src/polza/rpc.js";
 import { CLAUDE_NATIVE_ROOTS_DECLARATION } from "./src/native-roots.js";
 import { registerPolzaAiService } from "./src/polza/ai-service.js";
+import { PolzaBalanceWatch, type PolzaBalanceAlertKind } from "./src/polza/balance-watch.js";
+import { fetchPolzaGenerationCost, polzaGenerationId } from "./src/polza/billing.js";
+import { PolzaDocsStore } from "./src/polza/docs.js";
+import { POLZA_DEFAULT_DIARIZE_MODEL, POLZA_DEFAULT_IMAGE_MODEL } from "./src/polza/media.js";
+import { applyReplacements, findRetiredModels, PolzaReplacements, type PolzaRetiredModel } from "./src/polza/replacements.js";
+import { PolzaTools } from "./src/polza/tools.js";
 
 export { polzaRpcContract } from "./src/polza/rpc.js";
 
@@ -100,6 +107,49 @@ export default async function plugin(bb: BbPluginApi) {
       default: POLZA_DEFAULT_HAIKU_MODEL,
       experimental_schema: optionalSlug,
     },
+    voiceEnabled: {
+      type: "boolean",
+      label: "Voice input",
+      description:
+        "Offer Polza as bb's AI service for voice input (Settings → AI services). Uses the model below.",
+      default: true,
+    },
+    voiceModel: {
+      type: "string",
+      label: "Model for voice input",
+      description:
+        "A speech-to-text catalog model. GigaAM-v3 is tuned for Russian; pick a Whisper model for other languages.",
+      default: POLZA_DEFAULT_VOICE_MODEL,
+      experimental_schema: optionalSlug,
+    },
+    voiceCleanupEnabled: {
+      type: "boolean",
+      label: "Correct dictated terms",
+      description:
+        "After recognition, the model for titles fixes code terms spelled by ear (\"сервер тэ эс\" → server.ts). Adds about a second; skipped when it would be late.",
+      default: true,
+    },
+    imageModel: {
+      type: "string",
+      label: "Image model",
+      description: "Model behind the polza_generate_image agent tool and `bb polza image`.",
+      default: POLZA_DEFAULT_IMAGE_MODEL,
+      experimental_schema: optionalSlug,
+    },
+    diarizeModel: {
+      type: "string",
+      label: "Model for recordings with speakers",
+      description: "Model behind the polza_transcribe_recording agent tool and `bb polza transcribe`.",
+      default: POLZA_DEFAULT_DIARIZE_MODEL,
+      experimental_schema: optionalSlug,
+    },
+    balanceAlertRub: {
+      type: "number",
+      label: "Low balance alert, ₽",
+      description:
+        "Notify when the available balance drops under this amount, or under a tenth of the key limit is left. 0 turns the alerts off.",
+      default: 100,
+    },
     memoryEnabled: {
       type: "boolean",
       label: "Claude Code memory",
@@ -137,7 +187,9 @@ export default async function plugin(bb: BbPluginApi) {
       next.models !== current.models ||
       next.baseUrl !== current.baseUrl ||
       next.aiServiceEnabled !== current.aiServiceEnabled ||
-      next.aiServiceModel !== current.aiServiceModel;
+      next.aiServiceModel !== current.aiServiceModel ||
+      next.voiceEnabled !== current.voiceEnabled ||
+      next.voiceModel !== current.voiceModel;
     current = next;
     if (keyChanged) account.invalidate();
     if (keyChanged || modelsChanged) publishChanged();
@@ -154,10 +206,37 @@ export default async function plugin(bb: BbPluginApi) {
 
   const aiServiceModel = () => current.aiServiceModel?.trim() || POLZA_DEFAULT_HAIKU_MODEL;
   const aiServiceEnabled = () => current.aiServiceEnabled !== false;
+  const voiceModel = () => current.voiceModel?.trim() || POLZA_DEFAULT_VOICE_MODEL;
+  const voiceEnabled = () => current.voiceEnabled !== false;
+  const voiceCleanup = () => current.voiceCleanupEnabled !== false;
+  const balanceAlertRub = () =>
+    typeof current.balanceAlertRub === "number" && Number.isFinite(current.balanceAlertRub)
+      ? current.balanceAlertRub
+      : 100;
 
   const account = new PolzaAccountClient({ baseUrl, apiKey });
   const catalog = createPolzaCatalogMemo({ ttlMs: CATALOG_TTL_MS });
   const login = new PolzaOAuthLogin({ baseUrl, callbackUrl, appName: "bb" });
+  const api = { baseUrl, apiKey };
+  const replacements = new PolzaReplacements(api);
+  const tools = new PolzaTools(bb, {
+    api,
+    docs: new PolzaDocsStore(api),
+    imageModel: () => current.imageModel?.trim() || POLZA_DEFAULT_IMAGE_MODEL,
+    voiceModel,
+    diarizeModel: () => current.diarizeModel?.trim() || POLZA_DEFAULT_DIARIZE_MODEL,
+  });
+
+  async function retiredModels(): Promise<PolzaRetiredModel[]> {
+    const selected = selectedModels();
+    if (selected.length === 0) return [];
+    try {
+      return findRetiredModels(selected, await replacements.get());
+    } catch (error) {
+      bb.log.warn(`retired model lookup failed: ${String(error)}`);
+      return [];
+    }
+  }
 
   function publishChanged(): void {
     bb.realtime.publish(POLZA_CHANGED_CHANNEL, { at: new Date().toISOString() });
@@ -183,6 +262,8 @@ export default async function plugin(bb: BbPluginApi) {
       dashboardUrl: POLZA_DASHBOARD_URL,
       loginPending: login.pendingState() !== null,
       aiService: { enabled: aiServiceEnabled(), model: aiServiceModel() },
+      voice: { enabled: voiceEnabled(), model: voiceModel(), cleanup: voiceCleanup() },
+      retired: await retiredModels(),
     };
   }
 
@@ -277,6 +358,24 @@ export default async function plugin(bb: BbPluginApi) {
       publishChanged();
       return { enabled: aiServiceEnabled(), model: aiServiceModel() };
     },
+    "voice.set": async ({ enabled, model, cleanup }) => {
+      current = await settings.experimental_set({
+        ...(enabled !== undefined ? { voiceEnabled: enabled } : {}),
+        ...(model !== undefined ? { voiceModel: model } : {}),
+        ...(cleanup !== undefined ? { voiceCleanupEnabled: cleanup } : {}),
+      });
+      publishChanged();
+      return { enabled: voiceEnabled(), model: voiceModel(), cleanup: voiceCleanup() };
+    },
+    "models.replaceRetired": async () => {
+      const selected = selectedModels();
+      const next = applyReplacements(selected, await retiredModels());
+      if (next.join("\n") !== selected.join("\n")) {
+        current = await settings.experimental_set({ models: JSON.stringify(next) });
+        publishChanged();
+      }
+      return { models: next };
+    },
     "models.set": async ({ models }) => {
       const unique = [...new Set(models)];
       current = await settings.experimental_set({ models: JSON.stringify(unique) });
@@ -290,7 +389,43 @@ export default async function plugin(bb: BbPluginApi) {
     apiKey,
     model: aiServiceModel,
     enabled: aiServiceEnabled,
+    voiceModel,
+    voiceEnabled,
+    voiceCleanup,
   });
+  tools.registerAgentTools();
+
+  // Low balance and key limit: checked on a schedule, announced once per dip
+  // through bb's notification channels. Which alerts are out survives reloads.
+  const BALANCE_ALERTS_KEY = "balance-alerts";
+  const alertKinds = z.array(z.enum(["balance", "key-limit"]));
+  let balanceWatch: PolzaBalanceWatch | null = null;
+  async function checkBalance(): Promise<void> {
+    if (apiKey() === null) return;
+    if (balanceWatch === null) {
+      const stored = alertKinds.safeParse(await bb.storage.kv.get<unknown>(BALANCE_ALERTS_KEY));
+      balanceWatch = new PolzaBalanceWatch(stored.success ? stored.data : []);
+    }
+    const before = balanceWatch.activeKinds().join();
+    const alerts = balanceWatch.check(await account.get(true), balanceAlertRub());
+    if (balanceWatch.activeKinds().join() !== before) {
+      await bb.storage.kv.set(BALANCE_ALERTS_KEY, balanceWatch.activeKinds() satisfies PolzaBalanceAlertKind[]);
+      publishChanged();
+    }
+    for (const alert of alerts) {
+      try {
+        await bb.sdk.plugins.callRpc({
+          pluginId: "push-notifications",
+          method: "notifications.send",
+          input: { title: alert.title, body: alert.body },
+          outputSchema: z.object({ ok: z.literal(true) }).passthrough(),
+        });
+      } catch (error) {
+        bb.log.warn(`could not send "${alert.title}": ${String(error)}`);
+      }
+    }
+  }
+  bb.background.schedule("balance-watch", "*/10 * * * *", checkBalance);
 
   // Non-secret routing facts for the bridge's sessionless requests
   // (`model/list` sees them as `envVars`). Changing them changes the bridge
@@ -381,14 +516,40 @@ export default async function plugin(bb: BbPluginApi) {
     name: "polza",
     summary: "Polza provider: sign-in status, balance and picker models",
     commands: [
-      { name: "status", summary: "Account, balance and key limit", usage: "bb polza status [--json]" },
+      { name: "status", summary: "Account, balance, key limit and retired models", usage: "bb polza status [--json]" },
+      {
+        name: "spend",
+        summary: "Billed spend by the key today, this week and this month; or of one request",
+        usage: "bb polza spend [--json] | bb polza spend <generation-id>",
+      },
+      {
+        name: "image",
+        summary: "Generate an image into a file",
+        usage: "bb polza image <prompt> --out <path> [--size <WxH>] [--model <slug>]",
+      },
+      {
+        name: "transcribe",
+        summary: "Transcribe a recording, by default with speakers",
+        usage: "bb polza transcribe <audio-file> [--no-speakers] [--out <text-file>] [--model <slug>]",
+      },
+      {
+        name: "docs",
+        summary: "Search the Polza API docs or read a page",
+        usage: "bb polza docs <query> | bb polza docs --page <path> [--offset <n>]",
+      },
       {
         name: "models",
         summary: "Models offered in the picker; `set` replaces them",
         usage: "bb polza models [--json] | bb polza models set <slug> [<slug>…]",
       },
     ],
-    async run(argv) {
+    async run(argv, ctx) {
+      const routed = await tools.runCli(argv, {
+        ...(ctx.threadId !== undefined ? { threadId: ctx.threadId } : {}),
+        ...(ctx.cwd !== undefined ? { cwd: ctx.cwd } : {}),
+        ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
+      });
+      if (routed !== null) return routed;
       const json = argv.includes("--json");
       const args = argv.filter((arg) => arg !== "--json");
       const [command, sub, ...rest] = args;
@@ -396,6 +557,32 @@ export default async function plugin(bb: BbPluginApi) {
         const state = await status(true);
         if (json) return { exitCode: 0, stdout: JSON.stringify(state) };
         return { exitCode: 0, stdout: formatStatus(state) };
+      }
+      if (command === "spend" && sub !== undefined) {
+        const id = polzaGenerationId(sub);
+        if (id === null) return { exitCode: 1, stderr: "Pass a generation id such as gen_123 (or a message id msg_gen_123)." };
+        try {
+          const rub = await fetchPolzaGenerationCost(api, id, ctx.signal);
+          if (json) return { exitCode: 0, stdout: JSON.stringify({ id, rub, finalized: rub !== null }) };
+          return { exitCode: 0, stdout: rub === null ? `${id}: not finalized yet` : `${id}: ${rub.toFixed(4)} RUB` };
+        } catch (error) {
+          return { exitCode: 1, stderr: error instanceof Error ? error.message : String(error) };
+        }
+      }
+      if (command === "spend") {
+        const state = await account.get(true);
+        if (!state.signedIn) return { exitCode: 1, stderr: "Not signed in. Open Settings → Plugins → Polza." };
+        const spend = {
+          today: state.keyLimit?.usageDaily ?? null,
+          week: state.keyLimit?.usageWeekly ?? null,
+          month: state.keyLimit?.usageMonthly ?? null,
+          total: state.keyLimit?.usageTotal ?? null,
+        };
+        if (json) return { exitCode: 0, stdout: JSON.stringify(spend) };
+        return {
+          exitCode: 0,
+          stdout: `Billed to this key\nToday:      ${fmt(spend.today)} RUB\nThis week:  ${fmt(spend.week)} RUB\nThis month: ${fmt(spend.month)} RUB\nAll time:   ${fmt(spend.total)} RUB`,
+        };
       }
       if (command === "models" && sub === undefined) {
         const models = selectedModels();
@@ -415,7 +602,8 @@ export default async function plugin(bb: BbPluginApi) {
       }
       return {
         exitCode: 1,
-        stderr: "Usage:\n  bb polza status [--json]\n  bb polza models [--json]\n  bb polza models set <slug> [<slug>…]",
+        stderr:
+          "Usage:\n  bb polza status [--json]\n  bb polza spend [--json] | bb polza spend <generation-id>\n  bb polza models [--json]\n  bb polza models set <slug> [<slug>…]\n  bb polza image <prompt> --out <path>\n  bb polza transcribe <audio-file> [--no-speakers] [--out <text-file>]\n  bb polza docs <query> | bb polza docs --page <path>",
       };
     },
   });
@@ -440,6 +628,11 @@ function formatStatus(state: PolzaStatus): string {
     if (a.error) lines.push(`Warning: ${a.error}`);
   }
   lines.push(`Models: ${state.models.length === 0 ? "none selected" : state.models.join(", ")}`);
+  for (const model of state.retired) {
+    lines.push(
+      `Retired: ${model.id} → ${model.replacedBy ?? `pick another at ${model.url}`}`,
+    );
+  }
   return lines.join("\n");
 }
 

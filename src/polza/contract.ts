@@ -32,6 +32,8 @@ export const POLZA_STARTER_MODELS: readonly string[] = [
 
 /** The cheap model Claude Code uses for side work (titles, descriptions). */
 export const POLZA_DEFAULT_HAIKU_MODEL = "anthropic/claude-haiku-5.5";
+/** Sber's GigaAM-v3: Russian speech recognition, hosted in Russia. */
+export const POLZA_DEFAULT_VOICE_MODEL = "ai-sage/gigaam-v3";
 
 export const polzaModelSlugSchema = z
   .string()
@@ -81,6 +83,14 @@ export const polzaCostStateSchema = z.object({
   model: z.string().nullable(),
   /** True when a model had no catalog price and its tokens were not counted. */
   unpriced: z.boolean(),
+  /** What Polza billed for this session's requests, once it is known. */
+  billed: z
+    .object({
+      rub: z.number().nonnegative(),
+      requests: z.number().nonnegative(),
+      pending: z.number().nonnegative(),
+    })
+    .optional(),
   updatedAt: z.string(),
 });
 
